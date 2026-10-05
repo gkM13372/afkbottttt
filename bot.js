@@ -20,6 +20,41 @@ const config = {
 let attempts = 0
 let actionTimer = null
 
+
+// ---------------------------------------------------------------------------
+// 26.3 compatibility patch (until Mineflayer officially supports 26.3)
+// 26.3's teleport_confirm packet carries the resolved position/rotation.
+// Mineflayer only sends teleportId, so the other fields go out as NaN and the
+// server kicks with "Invalid move player packet received". We fill them in,
+// and send tick_end after movement packets (26.3 requires it).
+// Disable with MC_PATCH=false once Mineflayer supports 26.3 natively.
+// ---------------------------------------------------------------------------
+function patch263 (bot) {
+  const client = bot._client
+  let lastPos = null
+
+  // prepend so we store the position before Mineflayer's own handler replies
+  client.prependListener('position', (p) => { lastPos = p })
+
+  const origWrite = client.write.bind(client)
+  client.write = (name, params) => {
+    if (name === 'teleport_confirm' && lastPos) {
+      params = Object.assign({}, params, {
+        x: lastPos.x,
+        y: lastPos.y,
+        z: lastPos.z,
+        yRot: lastPos.yaw,
+        xRot: lastPos.pitch
+      })
+    }
+    const result = origWrite(name, params)
+    if (name === 'position' || name === 'position_look' || name === 'look' || name === 'flying') {
+      try { origWrite('tick_end', {}) } catch (e) { /* protocol has no tick_end */ }
+    }
+    return result
+  }
+}
+
 function startBot () {
   console.log(`[bot] connecting to ${config.host}:${config.port} ...`)
 
@@ -33,6 +68,7 @@ function startBot () {
     checkTimeoutInterval: 60000
   })
 
+  if (process.env.MC_PATCH !== 'false') patch263(bot)
   if (!config.move) bot.physicsEnabled = false
 
   bot.once('spawn', () => {
