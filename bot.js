@@ -18,6 +18,9 @@ const config = {
 // ========================================================
 
 let attempts = 0
+let currentBot = null
+let duplicateLogin = false
+let shuttingDown = false
 let actionTimer = null
 
 
@@ -68,6 +71,8 @@ function startBot () {
     checkTimeoutInterval: 60000
   })
 
+  currentBot = bot
+  duplicateLogin = false
   if (process.env.MC_PATCH !== 'false') patch263(bot)
   if (!config.move) bot.physicsEnabled = false
 
@@ -80,15 +85,26 @@ function startBot () {
   bot.on('death', () => console.log('[bot] died, respawning'))
   bot.on('health', () => { if (bot.health <= 0) bot.respawn?.() })
 
-  bot.on('kicked', (reason) => console.log('[bot] kicked:', JSON.stringify(reason)))
+  bot.on('kicked', (reason) => {
+    const text = JSON.stringify(reason)
+    console.log('[bot] kicked:', text)
+    if (/another location|already logged|duplicate/i.test(text)) duplicateLogin = true
+  })
   bot.on('error', (err) => console.log('[bot] error:', err.message))
 
   bot.once('end', (reason) => {
     console.log('[bot] disconnected:', reason)
     stopAntiAfk()
+    if (shuttingDown) return
     attempts++
     // Back off up to ~2 minutes if the server is offline / starting
-    const delay = Math.min(config.reconnectDelay * Math.min(attempts, 8), 120000)
+    let delay = Math.min(config.reconnectDelay * Math.min(attempts, 8), 120000)
+    // Another session (old deploy / other copy) holds this name. Wait longer,
+    // with random jitter, so we don't just kick each other in a loop.
+    if (duplicateLogin) {
+      delay = 60000 + Math.random() * 60000
+      console.log('[bot] duplicate login detected - another copy of this bot is running')
+    }
     console.log(`[bot] reconnecting in ${Math.round(delay / 1000)}s`)
     setTimeout(startBot, delay)
   })
@@ -131,6 +147,17 @@ function stopAntiAfk () {
   if (actionTimer) clearInterval(actionTimer)
   actionTimer = null
 }
+
+// On Railway redeploys, the old container gets SIGTERM. Leave the server
+// cleanly so the new container isn't kicked by a lingering old session.
+function shutdown () {
+  shuttingDown = true
+  stopAntiAfk()
+  try { currentBot && currentBot.quit() } catch (e) {}
+  setTimeout(() => process.exit(0), 1500)
+}
+process.on('SIGTERM', shutdown)
+process.on('SIGINT', shutdown)
 
 process.on('uncaughtException', (e) => console.log('[bot] uncaught:', e.message))
 startBot()
