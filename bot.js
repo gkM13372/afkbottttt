@@ -9,7 +9,11 @@ const config = {
   auth: process.env.MC_AUTH || 'offline',
   // false = auto-detect the server's version. Or set e.g. '26.3'
   version: process.env.MC_VERSION || false,
-  reconnectDelay: 15000 // ms; grows on repeated failures
+  reconnectDelay: 15000, // ms; grows on repeated failures
+  // Safe mode: no physics, so the bot never sends movement packets.
+  // This avoids "Invalid move player packet" kicks on versions mineflayer
+  // doesn't fully support yet. Set MC_MOVE=true to re-enable walking/jumping.
+  move: process.env.MC_MOVE === 'true'
 }
 // ========================================================
 
@@ -28,6 +32,8 @@ function startBot () {
     hideErrors: false,
     checkTimeoutInterval: 60000
   })
+
+  if (!config.move) bot.physicsEnabled = false
 
   bot.once('spawn', () => {
     attempts = 0
@@ -57,6 +63,12 @@ function startAntiAfk (bot) {
 
   actionTimer = setInterval(() => {
     if (!bot.entity) return
+
+    if (!config.move) {
+      // Packet-light activity only
+      bot.swingArm('right')
+      return
+    }
 
     // Random look direction
     const yaw = Math.random() * Math.PI * 2
