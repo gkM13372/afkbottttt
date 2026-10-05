@@ -4,7 +4,7 @@ const mineflayer = require('mineflayer')
 const config = {
   host: process.env.MC_HOST || 'szunyogszex.aternos.me',
   port: parseInt(process.env.MC_PORT || '56265'),
-  username: process.env.MC_USER || 'AFK_Bot',
+  username: process.env.MC_USER || 'AFK_Bot2',
   // 'offline' for cracked Aternos servers, 'microsoft' for online-mode servers
   auth: process.env.MC_AUTH || 'offline',
   // false = auto-detect the server's version. Or set e.g. '26.3'
